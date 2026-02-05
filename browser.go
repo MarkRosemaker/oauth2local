@@ -48,18 +48,19 @@ type config struct {
 func getTokenViaBrowser(ctx context.Context, cfg *config) (*oauth2.Token, error) {
 	// if cfg.Port == "" {
 	// Get the port from the redirect URL.
-	match := rePort.FindStringSubmatch(cfg.Oauth2.RedirectURL)
-	if len(match) == 0 {
-		return nil, fmt.Errorf("port not provided, can't infer from redirect URL %q",
-			cfg.Oauth2.RedirectURL)
-	}
+	// match := rePort.FindStringSubmatch(cfg.Oauth2.RedirectURL)
+	// if len(match) == 0 {
+	// 	return nil, fmt.Errorf("port not provided, can't infer from redirect URL %q",
+	// 		cfg.Oauth2.RedirectURL)
+	// }
 
 	// cfg.Port = match[1]
-	port := match[1]
-	// } else if cfg.Oauth2.RedirectURL == "" {
-	// Set the redirect URL to the port.
-	// 	cfg.Oauth2.RedirectURL = fmt.Sprintf("http://localhost:%s/callback", cfg.Port)
-	// }
+	// } else
+	port := "8080"
+	if cfg.Oauth2.RedirectURL == "" {
+		// Set the redirect URL to the port.
+		cfg.Oauth2.RedirectURL = fmt.Sprintf("http://localhost:%s/callback", port)
+	}
 
 	baseURL := &url.URL{Scheme: "http", Host: fmt.Sprintf("localhost:%s", port)}
 
