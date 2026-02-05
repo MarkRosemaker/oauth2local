@@ -46,6 +46,10 @@ func (c cache) getPath(scopes []string) string {
 
 // writeToken saves a token to a file path.
 func writeToken(path string, token *oauth2.Token) error {
+	if err := os.MkdirAll(filepath.Dir(path)); err != nil {
+		return fmt.Errorf("creating token cache directory: %w", err)
+	}
+
 	f, err := os.Create(path)
 	if err != nil {
 		return fmt.Errorf("creating token cache: %w", err)
