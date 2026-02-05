@@ -3,6 +3,7 @@ package oauth2local
 import (
 	"encoding/json/v2"
 	"fmt"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"strings"
@@ -46,7 +47,7 @@ func (c cache) getPath(scopes []string) string {
 
 // writeToken saves a token to a file path.
 func writeToken(path string, token *oauth2.Token) error {
-	if err := os.MkdirAll(filepath.Dir(path)); err != nil {
+	if err := os.MkdirAll(filepath.Dir(path), fs.ModePerm); err != nil {
 		return fmt.Errorf("creating token cache directory: %w", err)
 	}
 
