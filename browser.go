@@ -129,7 +129,6 @@ Please make sure %s is an allowed callback URL.
 	select {
 	case code := <-codeCh:
 		tkn, err := cfg.Oauth2.Exchange(ctx, code) // cfg.ExchangeOptions...,
-
 		if err != nil {
 			return nil, fmt.Errorf("exchanging token: %w", err)
 		}
