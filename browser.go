@@ -57,10 +57,10 @@ func getTokenViaBrowser(ctx context.Context, cfg *config) (*oauth2.Token, error)
 	// cfg.Port = match[1]
 	// } else
 	port := "8080"
-	if cfg.Oauth2.RedirectURL == "" {
-		// Set the redirect URL to the port.
-		cfg.Oauth2.RedirectURL = fmt.Sprintf("http://localhost:%s/callback", port)
-	}
+	// if cfg.Oauth2.RedirectURL == "" {
+	// Set the redirect URL to the port.
+	cfg.Oauth2.RedirectURL = fmt.Sprintf("http://localhost:%s/callback", port)
+	// }
 
 	baseURL := &url.URL{Scheme: "http", Host: fmt.Sprintf("localhost:%s", port)}
 
