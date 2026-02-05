@@ -17,15 +17,6 @@ func GetToken(ctx context.Context, cfg *oauth2.Config, service string) (*oauth2.
 	})
 }
 
-func getAndCacheNewToken(ctx context.Context, cfg *config, cacheLoc string) (*oauth2.Token, error) {
-	tkn, err := getTokenViaBrowser(ctx, cfg)
-	if err != nil {
-		return nil, fmt.Errorf("getting token via browser: %w", err)
-	}
-
-	return tkn, writeToken(cacheLoc, tkn)
-}
-
 // getTokenWithConfig either gets a token from the specified cache location or
 // generates a new token by starting a local server that both redirects to the OAuth 2.0 provider's consent page and receives a callback from the provider.
 // Upon receiving the callback, it takes the provided code and does a token exchange.
@@ -81,4 +72,13 @@ func getTokenWithConfig(ctx context.Context, cfg *config) (*oauth2.Token, error)
 	}
 
 	return tkn, nil
+}
+
+func getAndCacheNewToken(ctx context.Context, cfg *config, cacheLoc string) (*oauth2.Token, error) {
+	tkn, err := getTokenViaBrowser(ctx, cfg)
+	if err != nil {
+		return nil, fmt.Errorf("getting token via browser: %w", err)
+	}
+
+	return tkn, writeToken(cacheLoc, tkn)
 }

@@ -48,12 +48,12 @@ func (c cache) getPath(scopes []string) string {
 func writeToken(path string, token *oauth2.Token) error {
 	f, err := os.Create(path)
 	if err != nil {
-		return err
+		return fmt.Errorf("creating token cache: %w", err)
 	}
 	defer f.Close()
 
 	if err := json.MarshalWrite(f, token); err != nil {
-		return err
+		return fmt.Errorf("marshaling token: %w", err)
 	}
 
 	return nil
@@ -63,13 +63,13 @@ func writeToken(path string, token *oauth2.Token) error {
 func readToken(path string) (*oauth2.Token, error) {
 	f, err := os.Open(path)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("reading token: %w", err)
 	}
 	defer f.Close()
 
 	token := &oauth2.Token{}
 	if err := json.UnmarshalRead(f, token); err != nil {
-		return nil, err
+		return nil, fmt.Errorf("unmarshaling token: %w", err)
 	}
 
 	return token, nil
