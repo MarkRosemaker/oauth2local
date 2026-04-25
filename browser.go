@@ -20,10 +20,8 @@ const (
 	timeoutDuration = 5 * time.Minute
 )
 
-var (
-	//go:embed success.html
-	successHTML []byte
-)
+//go:embed success.html
+var successHTML []byte
 
 type config struct {
 	// The port to use for the local server.
