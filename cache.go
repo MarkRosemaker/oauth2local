@@ -55,7 +55,7 @@ func writeToken(path string, token *oauth2.Token) error {
 	if err != nil {
 		return fmt.Errorf("creating token cache: %w", err)
 	}
-	defer f.Close()
+	defer f.Close() //nolint:errcheck
 
 	if err := json.MarshalWrite(f, token); err != nil {
 		return fmt.Errorf("marshaling token: %w", err)
@@ -70,7 +70,7 @@ func readToken(path string) (*oauth2.Token, error) {
 	if err != nil {
 		return nil, fmt.Errorf("reading token: %w", err)
 	}
-	defer f.Close()
+	defer f.Close() //nolint:errcheck
 
 	token := &oauth2.Token{}
 	if err := json.UnmarshalRead(f, token); err != nil {

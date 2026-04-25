@@ -8,7 +8,6 @@ import (
 	"log/slog"
 	"net/http"
 	"net/url"
-	"regexp"
 	"time"
 
 	"github.com/google/uuid"
@@ -22,8 +21,6 @@ const (
 )
 
 var (
-	rePort = regexp.MustCompile(`^http://localhost:([0-9]+)`)
-
 	//go:embed success.html
 	successHTML []byte
 )
@@ -95,14 +92,14 @@ func getTokenViaBrowser(ctx context.Context, cfg *config) (*oauth2.Token, error)
 	mux.HandleFunc(callbackPath, func(w http.ResponseWriter, r *http.Request) {
 		if gotState := r.URL.Query().Get("state"); state != gotState {
 			w.WriteHeader(http.StatusBadRequest)
-			w.Write([]byte("invalid state: "))
-			w.Write([]byte(gotState))
+			_, _ = w.Write([]byte("invalid state: "))
+			_, _ = w.Write([]byte(gotState))
 			return
 		}
 
 		codeCh <- r.URL.Query().Get("code")
 
-		w.Write(successHTML)
+		_, _ = w.Write(successHTML)
 	})
 
 	// if fi := cfg.VerificationFile; fi != nil {
@@ -125,7 +122,11 @@ Please make sure %s is an allowed callback URL.
 
 		_ = svr.ListenAndServe()
 	}()
-	defer svr.Shutdown(ctx)
+	defer func() {
+		if err := svr.Shutdown(ctx); err != nil {
+			slog.ErrorContext(ctx, "shutting down server", "error", err)
+		}
+	}()
 
 	select {
 	case code := <-codeCh:
