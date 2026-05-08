@@ -11,5 +11,5 @@ require (
 
 require (
 	github.com/gosimple/unidecode v1.0.1 // indirect
-	golang.org/x/sys v0.43.0 // indirect
+	golang.org/x/sys v0.44.0 // indirect
 )
