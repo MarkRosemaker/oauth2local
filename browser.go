@@ -120,6 +120,7 @@ Please make sure %s is an allowed callback URL.
 
 		_ = svr.ListenAndServe()
 	}()
+
 	defer func() {
 		if err := svr.Shutdown(ctx); err != nil {
 			slog.ErrorContext(ctx, "shutting down server", "error", err)
