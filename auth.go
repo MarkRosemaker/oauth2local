@@ -10,11 +10,7 @@ import (
 )
 
 func GetToken(ctx context.Context, cfg *oauth2.Config, service string) (*oauth2.Token, error) {
-	return getTokenWithConfig(ctx, &config{
-		cache:           cache{ServiceName: service},
-		Oauth2:          cfg,
-		AuthCodeOptions: []oauth2.AuthCodeOption{oauth2.AccessTypeOffline},
-	})
+	return getTokenWithConfig(ctx, newConfig(cfg, service))
 }
 
 // getTokenWithConfig either gets a token from the specified cache location or

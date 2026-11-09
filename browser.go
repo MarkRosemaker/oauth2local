@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"net"
 	"net/http"
 	"net/url"
 	"time"
@@ -17,6 +18,8 @@ import (
 
 const (
 	authPath        = "/auth"
+	callbackPath    = "/callback"
+	defaultPort     = "8080"
 	timeoutDuration = 5 * time.Minute
 )
 
@@ -24,118 +27,136 @@ const (
 var successHTML []byte
 
 type config struct {
-	// The port to use for the local server.
-	// Port string
 	// The OAuth 2.0 configuration.
 	Oauth2 *oauth2.Config
 	// The cache configuration.
 	cache cache
 	// The options to pass to the AuthCodeURL method.
 	AuthCodeOptions []oauth2.AuthCodeOption
-	// The options to pass to the Exchange method.
-	// ExchangeOptions []oauth2.AuthCodeOption
-	// A verification file to serve at the root of the local server.
-	// VerificationFile *VerificationFile
+	// The port of the local server; "0" picks a free one.
+	port string
+	// Opens the given URL in the user's browser.
+	openBrowser func(url string) error
+}
+
+func newConfig(cfg *oauth2.Config, service string) *config {
+	return &config{
+		cache:           cache{ServiceName: service},
+		Oauth2:          cfg,
+		AuthCodeOptions: []oauth2.AuthCodeOption{oauth2.AccessTypeOffline},
+		port:            defaultPort,
+		openBrowser:     browser.OpenURL,
+	}
 }
 
 // getTokenViaBrowser generates a new token by starting a local server that both redirects to the OAuth 2.0 provider's consent page and receives a callback from the provider.
 // Upon receiving the callback, it takes the provided code and does a token exchange.
 func getTokenViaBrowser(ctx context.Context, cfg *config) (*oauth2.Token, error) {
-	// if cfg.Port == "" {
-	// Get the port from the redirect URL.
-	// match := rePort.FindStringSubmatch(cfg.Oauth2.RedirectURL)
-	// if len(match) == 0 {
-	// 	return nil, fmt.Errorf("port not provided, can't infer from redirect URL %q",
-	// 		cfg.Oauth2.RedirectURL)
-	// }
-
-	// cfg.Port = match[1]
-	// } else
-	port := "8080"
-	// if cfg.Oauth2.RedirectURL == "" {
-	// Set the redirect URL to the port.
-	cfg.Oauth2.RedirectURL = fmt.Sprintf("http://localhost:%s/callback", port)
-	// }
-
-	baseURL := &url.URL{Scheme: "http", Host: fmt.Sprintf("localhost:%s", port)}
-
-	redirectURL, err := url.Parse(cfg.Oauth2.RedirectURL)
+	ln, err := (&net.ListenConfig{}).Listen(ctx, "tcp", net.JoinHostPort("localhost", cfg.port))
 	if err != nil {
-		return nil, fmt.Errorf("parsing redirect URL: %w", err)
+		return nil, fmt.Errorf("starting local server: %w", err)
 	}
 
-	callbackPath := redirectURL.Path
-	if callbackPath == "" {
-		callbackPath = "/"
+	_, port, err := net.SplitHostPort(ln.Addr().String())
+	if err != nil {
+		_ = ln.Close()
+
+		return nil, fmt.Errorf("reading local server port: %w", err)
 	}
+
+	baseURL := &url.URL{Scheme: "http", Host: net.JoinHostPort("localhost", port)}
+	cfg.Oauth2.RedirectURL = baseURL.JoinPath(callbackPath).String()
 
 	// Generate the authentication URL.
 	state := uuid.NewString()
 	authCodeURL := cfg.Oauth2.AuthCodeURL(state, cfg.AuthCodeOptions...)
 
 	mux := http.NewServeMux()
-	svr := &http.Server{Addr: ":" + port, Handler: mux}
+	svr := &http.Server{Handler: mux, ReadHeaderTimeout: 10 * time.Second}
 
-	// The authentication path should redirect to the OAuth 2.0 provider's consent page.
 	// NOTE: If the redirect is permanent, it will be cached which we don't want, so it is a temporary redirect.
 	mux.HandleFunc(authPath, func(w http.ResponseWriter, r *http.Request) {
 		http.Redirect(w, r, authCodeURL, http.StatusTemporaryRedirect)
 	})
 
-	codeCh := make(chan string)
-	defer close(codeCh)
+	// Only the first valid callback counts; later ones must not block.
+	resultCh := make(chan callbackResult, 1)
 
-	// The callback path checks if the state is valid.
-	// If so, we retrieve the code.
 	mux.HandleFunc(callbackPath, func(w http.ResponseWriter, r *http.Request) {
-		if gotState := r.URL.Query().Get("state"); state != gotState {
+		q := r.URL.Query()
+		if gotState := q.Get("state"); state != gotState {
 			w.WriteHeader(http.StatusBadRequest)
 			_, _ = w.Write([]byte("invalid state: "))
 			_, _ = w.Write([]byte(gotState))
+
 			return
 		}
 
-		codeCh <- r.URL.Query().Get("code")
+		res := callbackResult{code: q.Get("code")}
+		if e := q.Get("error"); e != "" {
+			res.err = fmt.Errorf("authorization failed: %s", e)
+			if desc := q.Get("error_description"); desc != "" {
+				res.err = fmt.Errorf("%w: %s", res.err, desc)
+			}
+		}
+
+		select {
+		case resultCh <- res:
+		default:
+		}
+
+		if res.err != nil {
+			w.WriteHeader(http.StatusBadRequest)
+			_, _ = w.Write([]byte(res.err.Error()))
+
+			return
+		}
 
 		_, _ = w.Write(successHTML)
 	})
 
-	// if fi := cfg.VerificationFile; fi != nil {
-	// 	mux.HandleFunc(fmt.Sprintf("/%s", fi.Path), func(w http.ResponseWriter, r *http.Request) {
-	// 		w.Write(fi.Content)
-	// 	})
-	// }
-
 	svr.RegisterOnShutdown(func() { slog.DebugContext(ctx, "server shut down") })
 
-	authURL := baseURL.JoinPath(authPath).String()
-	go func() {
-		fmt.Printf(`Starting server, please visit %q to be redirected to the OAuth 2.0 provider's consent page.
-Please make sure %s is an allowed callback URL.
-`, authURL, cfg.Oauth2.RedirectURL)
-		_ = browser.OpenURL(authURL)
-		// if cfg.VerificationFile != nil {
-		// 	fmt.Printf("Serving verification file at %q\n", baseURL.JoinPath(cfg.VerificationFile.Path))
-		// }
-
-		_ = svr.ListenAndServe()
-	}()
+	go func() { _ = svr.Serve(ln) }()
 
 	defer func() {
-		if err := svr.Shutdown(ctx); err != nil {
+		if err := svr.Shutdown(context.WithoutCancel(ctx)); err != nil {
 			slog.ErrorContext(ctx, "shutting down server", "error", err)
 		}
 	}()
 
+	authURL := baseURL.JoinPath(authPath).String()
+	fmt.Printf(`Starting server, please visit %q to be redirected to the OAuth 2.0 provider's consent page.
+Please make sure %s is an allowed callback URL.
+`, authURL, cfg.Oauth2.RedirectURL)
+
+	if err := cfg.openBrowser(authURL); err != nil {
+		slog.WarnContext(ctx, "opening browser", "error", err)
+	}
+
+	timer := time.NewTimer(timeoutDuration)
+	defer timer.Stop()
+
 	select {
-	case code := <-codeCh:
-		tkn, err := cfg.Oauth2.Exchange(ctx, code) // cfg.ExchangeOptions...,
+	case res := <-resultCh:
+		if res.err != nil {
+			return nil, res.err
+		}
+
+		tkn, err := cfg.Oauth2.Exchange(ctx, res.code)
 		if err != nil {
 			return nil, fmt.Errorf("exchanging token: %w", err)
 		}
 
 		return tkn, nil
-	case <-time.After(timeoutDuration):
+	case <-ctx.Done():
+		return nil, ctx.Err()
+	case <-timer.C:
 		return nil, errors.New("token exchange timed out")
 	}
+}
+
+type callbackResult struct {
+	code string
+	err  error
 }
